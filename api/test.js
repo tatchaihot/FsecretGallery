@@ -1,5 +1,3 @@
-export default function handler(req) {
-  return new Response(JSON.stringify({ status: 'ok', time: new Date().toISOString() }), {
-    headers: { 'Content-Type': 'application/json' }
-  });
+export default function handler(req, res) {
+  res.status(200).json({ status: 'ok', time: new Date().toISOString() });
 }
