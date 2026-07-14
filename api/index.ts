@@ -1,16 +1,19 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import { getImages, addImage, type ImageRecord } from './data'
+import fs from 'fs'
+import path from 'path'
 import { signToken, validateCredentials, requireAuth } from './auth'
+import { getImages, addImage, type ImageRecord } from './data'
 
 const app = new Hono()
 
 app.use('/*', cors())
 
-const CLOUDINARY_CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME || 'pl5qo8sm'
-const CLOUDINARY_API_KEY = process.env.CLOUDINARY_API_KEY || ''
-const CLOUDINARY_API_SECRET = process.env.CLOUDINARY_API_SECRET || ''
-const UPLOAD_PRESET = process.env.CLOUDINARY_UPLOAD_PRESET || 'fsecret_unsigned'
+// Vercel: use /tmp for uploads
+const UPLOAD_DIR = process.env.VERCEL ? '/tmp/uploads' : path.join(process.cwd(), 'public', 'uploads')
+if (!fs.existsSync(UPLOAD_DIR)) {
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true })
+}
 
 // Login
 app.post('/api/login', async (c) => {
@@ -38,33 +41,34 @@ app.get('/api/images', (c) => {
   return c.json({ images })
 })
 
-// Get Cloudinary config (for frontend upload)
-app.get('/api/cloudinary-config', (c) => {
-  return c.json({
-    cloudName: CLOUDINARY_CLOUD_NAME,
-    uploadPreset: UPLOAD_PRESET,
-  })
-})
-
-// Add image metadata (after Cloudinary upload)
-app.post('/api/images', async (c) => {
+// Upload image (admin only)
+app.post('/api/upload', async (c) => {
   const user = await requireAuth(c.req.raw.headers)
   if (!user) return c.json({ error: 'Unauthorized' }, 401)
 
-  const body = await c.req.json()
-  const { publicId, url, title, category } = body
+  const body = await c.req.parseBody()
+  const imageFile = body['image'] as File
+  const title = (body['title'] as string) || 'ไม่มีชื่อ'
+  const category = (body['category'] as string) || 'ทั่วไป'
 
-  if (!publicId || !url) {
-    return c.json({ error: 'publicId and url are required' }, 400)
+  if (!imageFile) {
+    return c.json({ error: 'No image provided' }, 400)
   }
 
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const ext = imageFile.name.split('.').pop() || 'jpg'
+  const filename = `${id}.${ext}`
+  const filepath = path.join(UPLOAD_DIR, filename)
+
+  const buffer = Buffer.from(await imageFile.arrayBuffer())
+  fs.writeFileSync(filepath, buffer)
+
   const image: ImageRecord = {
-    id: publicId,
-    filename: publicId,
-    url: url,
-    thumbnailUrl: url.replace('/upload/', '/upload/w_400,h_400,c_fill/'),
-    title: title || 'ไม่มีชื่อ',
-    category: category || 'ทั่วไป',
+    id,
+    filename,
+    url: `/api/file/${filename}`,
+    title,
+    category,
     uploadedAt: new Date().toISOString(),
   }
 
@@ -83,30 +87,13 @@ app.delete('/api/images/:id', async (c) => {
 
   if (!image) return c.json({ error: 'Not found' }, 404)
 
-  // Delete from Cloudinary if API key exists
-  if (CLOUDINARY_API_KEY && CLOUDINARY_API_SECRET) {
-    try {
-      const timestamp = Math.floor(Date.now() / 1000)
-      const signature = await createSignature(`public_id=${id}&timestamp=${timestamp}`, CLOUDINARY_API_SECRET)
-      
-      await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/destroy`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          public_id: id,
-          api_key: CLOUDINARY_API_KEY,
-          timestamp,
-          signature,
-        }),
-      })
-    } catch (e) {
-      console.error('Cloudinary delete failed:', e)
-    }
+  try {
+    const filepath = path.join(UPLOAD_DIR, image.filename)
+    if (fs.existsSync(filepath)) fs.unlinkSync(filepath)
+  } catch (e) {
+    console.error('Failed to delete file:', e)
   }
 
-  // Remove from local data
-  const fs = await import('fs')
-  const path = await import('path')
   const dataFile = process.env.VERCEL ? '/tmp/images.json' : path.join(process.cwd(), 'data', 'images.json')
   const data = JSON.parse(fs.readFileSync(dataFile, 'utf-8'))
   data.images = data.images.filter((img: ImageRecord) => img.id !== id)
@@ -118,12 +105,28 @@ app.delete('/api/images/:id', async (c) => {
 // Health check
 app.get('/api/health', (c) => c.json({ status: 'ok' }))
 
-async function createSignature(stringToSign: string, apiSecret: string): Promise<string> {
-  const encoder = new TextEncoder()
-  const data = encoder.encode(stringToSign + apiSecret)
-  const hashBuffer = await crypto.subtle.digest('SHA-1', data)
-  const hashArray = Array.from(new Uint8Array(hashBuffer))
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
-}
+// Serve uploaded files (Vercel)
+app.get('/api/file/:filename', async (c) => {
+  const filename = c.req.param('filename')
+  const filepath = path.join(UPLOAD_DIR, filename)
 
+  if (!fs.existsSync(filepath)) {
+    return c.notFound()
+  }
+
+  const file = fs.readFileSync(filepath)
+  const ext = path.extname(filepath).toLowerCase()
+  const contentType =
+    ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' :
+    ext === '.png' ? 'image/png' :
+    ext === '.gif' ? 'image/gif' :
+    ext === '.webp' ? 'image/webp' :
+    'application/octet-stream'
+
+  return new Response(file, {
+    headers: { 'Content-Type': contentType },
+  })
+})
+
+// For Vercel serverless
 export default app
