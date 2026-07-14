@@ -1,0 +1,37 @@
+{
+  "name": "fsecret-gallery",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:ui\"",
+    "dev:ui": "vite",
+    "dev:api": "tsx watch api/server.ts",
+    "build": "vite build",
+    "start": "NODE_ENV=production node dist/api/server.js",
+    "vercel-build": "vite build"
+  },
+  "dependencies": {
+    "hono": "^4.7.5",
+    "jose": "^6.0.10",
+    "lucide-react": "^0.487.0",
+    "multer": "^1.4.5-lts.2",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/multer": "^1.4.12",
+    "@types/node": "^22.14.1",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.3",
+    "@vitejs/plugin-react": "^4.4.1",
+    "autoprefixer": "^10.4.21",
+    "concurrently": "^9.1.2",
+    "postcss": "^8.5.3",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tailwindcss": "^3.4.17",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5"
+  }
+}
