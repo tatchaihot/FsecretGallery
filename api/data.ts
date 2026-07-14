@@ -16,6 +16,7 @@ export interface ImageRecord {
   id: string
   filename: string
   url: string
+  thumbnailUrl?: string
   title: string
   category: string
   uploadedAt: string
