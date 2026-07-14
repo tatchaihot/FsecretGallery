@@ -1,5 +1,5 @@
-import fs from 'fs'
-import path from 'path'
+import * as fs from 'fs'
+import * as path from 'path'
 
 const DATA_DIR = process.env.VERCEL ? '/tmp' : path.join(process.cwd(), 'data')
 const DATA_FILE = path.join(DATA_DIR, 'images.json')
