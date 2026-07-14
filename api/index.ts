@@ -1,6 +1,5 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import { handle } from 'hono/vercel'
 
 import { getImages, addImage, type ImageRecord } from './data'
 import { signToken, validateCredentials, requireAuth } from './auth'
@@ -128,4 +127,4 @@ async function createSignature(stringToSign: string, apiSecret: string): Promise
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
-export default handle(app)
+export default app.fetch
