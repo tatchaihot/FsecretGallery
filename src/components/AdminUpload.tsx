@@ -1,19 +1,51 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Upload, X, ImagePlus, Loader2, Check } from 'lucide-react'
 
 interface UploadingFile {
   file: File
   id: string
-  progress: number
   status: 'uploading' | 'done' | 'error'
   title: string
   category: string
+  progress: number
+}
+
+interface CloudinaryConfig {
+  cloudName: string
+  uploadPreset: string
 }
 
 export default function AdminUpload() {
   const [files, setFiles] = useState<UploadingFile[]>([])
   const [dragOver, setDragOver] = useState(false)
   const [globalCategory, setGlobalCategory] = useState('ทั่วไป')
+  const [config, setConfig] = useState<CloudinaryConfig | null>(null)
+
+  useEffect(() => {
+    fetch('/api/cloudinary-config')
+      .then(r => r.json())
+      .then(setConfig)
+      .catch(() => null)
+  }, [])
+
+  const uploadToCloudinary = async (file: File, title: string, category: string): Promise<{url: string, publicId: string} | null> => {
+    if (!config) return null
+
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('upload_preset', config.uploadPreset)
+    formData.append('folder', 'fsecret-gallery')
+    formData.append('context', `title=${title}|category=${category}`)
+
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${config.cloudName}/image/upload`, {
+      method: 'POST',
+      body: formData,
+    })
+
+    if (!res.ok) return null
+    const data = await res.json()
+    return { url: data.secure_url, publicId: data.public_id }
+  }
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -31,31 +63,37 @@ export default function AdminUpload() {
     const uploads: UploadingFile[] = newFiles.map(file => ({
       file,
       id: Math.random().toString(36).slice(2),
-      progress: 0,
       status: 'uploading',
       title: file.name.replace(/\.[^/.]+$/, ''),
       category: globalCategory,
+      progress: 0,
     }))
     setFiles(prev => [...prev, ...uploads])
     uploads.forEach(uploadFile)
   }
 
   const uploadFile = async (item: UploadingFile) => {
-    const formData = new FormData()
-    formData.append('image', item.file)
-    formData.append('title', item.title)
-    formData.append('category', item.category)
-
-    const token = localStorage.getItem('admin_token')
-
     try {
-      const res = await fetch('/api/upload', {
+      const result = await uploadToCloudinary(item.file, item.title, item.category)
+      if (!result) throw new Error('Upload failed')
+
+      // Save metadata to our backend
+      const token = localStorage.getItem('admin_token')
+      const res = await fetch('/api/images', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          publicId: result.publicId,
+          url: result.url,
+          title: item.title,
+          category: item.category,
+        }),
       })
 
-      if (!res.ok) throw new Error('Upload failed')
+      if (!res.ok) throw new Error('Save metadata failed')
 
       setFiles(prev =>
         prev.map(f =>

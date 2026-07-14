@@ -5,6 +5,7 @@ interface GalleryImage {
   id: string
   filename: string
   url: string
+  thumbnailUrl?: string
   title: string
   category: string
   uploadedAt: string
@@ -74,7 +75,7 @@ export default function Gallery() {
               className="group relative aspect-square bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-lg transition-all cursor-pointer border border-gray-100"
             >
               <img
-                src={img.url}
+                src={img.thumbnailUrl || img.url}
                 alt={img.title}
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                 loading="lazy"
